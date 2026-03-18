@@ -1,3 +1,205 @@
-# ATK
+# 工具简介
 
-管理ATK二进制安装包和用户指导
+ATK算子测试工具，是一款调用算子接口进行测试的端到端算子测试工具，主要功能包括算子测试用例泛化生成、多设备算子调用执行、主流场景算子精度&性能测试、测试报告导出等， 支持快速生成批量测试用例，验证和发现算子潜在问题和风险，实现有效看护和提升算子质量。
+
+* **支持算子测试用例自动生成**：边界值、非边界值、特殊tensor等用例组合，自动批量生成测试用例
+* **支持丰富的算子测试类型**：支持Pytorch、aclnn、atb、triton等算子测试
+* **支持多种硬件类型**：支持NPU、GPU、CPU作为待测或标杆产品
+* **支持多种算子测试场景**：提供精度测试、性能测试（E2E和device性能）测试
+* **支持多种算子特性**：支持算子确定性计算测试、算子fuzz测试
+* **支持用户自定义插件**：支持自定义参数约束插件、自定义执行插件、自定义精度对比插件等
+* **支持多种精度对比类型**：支持单标杆、双标杆、二进制一致等精度标准
+* **支持灵活的调试方法**：支持单进程/多进程调试、工具性能分析、丰富的日志信息
+
+## 基本使用指南
+
+- [用例生成](/ATK使用指南/用例生成.md)
+- [任务执行](/ATK使用指南/任务执行.md)
+- [结果分析](/ATK使用指南/结果分析.md)
+
+## 各类算子测试详细指南
+
+- [PyAclnn算子测试指南](/ATK使用指南/各类算子测试指南/PyAclnn算子测试指南.md)
+- [PyAclnn自定义API编写指南](/ATK使用指南/各类算子测试指南/PyAclnn自定义API编写指南.md)
+- [ATB算子测试指南](/ATK使用指南/各类算子测试指南/ATB算子测试指南.md)
+- [Triton算子测试指南](/ATK使用指南/各类算子测试指南/Triton算子测试指南.md)
+- [Kernel算子测试指南](/ATK使用指南/各类算子测试指南/Kernel算子测试指南.md)
+- [Tensorflow算子测试指南](/ATK使用指南/各类算子测试指南/Tensorflow算子测试指南.md)
+- [融合规则算子测试指南](/ATK使用指南/各类算子测试指南/融合规则算子测试指南.md)
+- [通信&通算融合算子测试指南](/ATK使用指南/各类算子测试指南/通信&通算融合算子测试指南.md)
+- [模型采集算子测试指南](/ATK使用指南/各类算子测试指南/模型采集算子测试指南.md)
+- [算子Fuzz压测使用指南](/ATK使用指南/各类算子测试指南/算子Fuzz压测使用指南.md)
+
+## FAQ和问题自定位指南
+
+- [FAQ一本通](/ATK使用指南/FAQ和问题自定位指南/FAQ一本通.md)
+- [错误码定位指南](/ATK使用指南/FAQ和问题自定位指南/错误码定位指南.md)
+- [非连续tensor输出定位指南](/ATK使用指南/FAQ和问题自定位指南/非连续tensor输出定位指南.md)
+- [算子输入输出dump指南](/ATK使用指南/FAQ和问题自定位指南/算子输入输出dump指南.md)
+
+
+# 快速入门
+
+## 工具安装
+
+- 按照昇腾社区安装CANN环境：[官方链接](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_quick.html?Mode=PmIns&OS=openEuler&Software=cannToolKit)
+- Python版本建议选择3.8及以上，AscendPyTorch版本推荐使用2.1及以上，安装请参考《[Ascend Extension for PyTorch插件](https://gitcode.com/Ascend/pytorch)》
+
+- 建议使用conda环境或容器内安装，需要连接网络安装其他依赖软件包，请确保服务pip源和网络正常
+
+```shell
+pip install ATK*.whl
+```
+
+- 执行下面命令回显正常表示安装成功：
+
+```shell
+pip show atk
+```
+
+## 用例设计
+
+- 根据torch.max算子的输入参数，参考链接：[torch.max算子定义](https://docs.pytorch.org/docs/main/generated/torch.max.html)
+
+>Parameters:
+>		input (Tensor) – the input tensor.
+>		dim (int, optional) – the dimension to reduce. If omitted, all dimensions are reduced. Explicit None is not supported.
+>		keepdim (bool, optional) – whether the output tensor has dim retained or not. Default: False.
+
+- 编写用例设计文件，即**op_max.yaml**
+
+```yaml
+# op_max.yaml
+api: pytorch
+api_type: function
+version: v2.1
+name: torch.max
+dtype_numbers: 200
+generate: reduce
+standard:
+   acc: single_bm
+   perf: not_key
+inputs:
+  - name: input
+    type: tensor
+    required: true
+    dtypes:
+      values: [ fp32, bf16, fp16 ]
+    ranges:
+      valid:
+        values: [ [-5, 5] ]
+      invalid:
+        values: [ [-5, 5] ]
+    shapes:
+      dim_numbers:
+        values: [1, 2, 3, 4, 5, 6, 7, 8]
+  - name: dim
+    type: attr
+    required: true
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ [-5, 5] ]
+      invalid:
+        values: [ [-5, 5] ]
+  - name: keepdim
+    type: attr
+    required: false
+    dtypes:
+      values: [ bool ]
+    ranges:
+      valid:
+        values: [ true,  false ]
+        weights: [ 0.5, 0.5 ]
+```
+- 文件中`generate`字段表示自定义参数约束规则为`reduce`，约束规则代码如下，即**generate_reduce.py**
+
+```python
+import random
+
+from atk.case_generator.generator.generate_types import GENERATOR_REGISTRY
+from atk.case_generator.generator.base_generator import CaseGenerator
+from atk.configs.case_config import CaseConfig
+
+@GENERATOR_REGISTRY.register("reduce")
+class ReduceGenerator(CaseGenerator):
+    def after_case_config(self, case_config: CaseConfig) -> CaseConfig:
+        '''
+        用例参数约束修改入口
+        :param case_config:  生成的用例信息，可能不满足参数间约束，导致用例无效
+        :return: 返回修改后符合参数间约束关系的用例，需要用例保障用例有效
+        '''
+        dim = len(case_config.inputs[0].shape)  # 获取第一个tensor参数shape最大维度值
+        range_is_null = case_config.inputs[0].is_range_null()  # 判断是否为空tensor
+        if range_is_null:
+            case_config.inputs[1].range_values = [0]  # 空tensor设置维度值为0
+        else:
+            case_config.inputs[1].range_values = [random.randint(-dim, max(0, dim - 1))]  # 非空tensor设置dim在可选范围内随机
+        return case_config  # 返回修改和符合参数约束的用例
+```
+
+## 用例生成
+
+- 执行以下命令生成测试用例：
+
+```shell
+atk case -f op_max.yaml -p generate_reduce.py
+```
+
+> 用例结果会保存在`result/op_max/json/all_op_max.json`下
+> 更多使用参数说明可执行`atk case --help`查看
+> 用例设计及规则约束详细说明可参考用例生成章节
+
+## 任务执行
+
+* 执行下面命令进行精度比对：
+
+```shell
+atk node --backend npu --devices 0 node --backend cpu task -c result/op_max/json/all_op_max.json --task accuracy -e 1
+```
+
+* 也可编写**node.yaml**文件：
+
+```yaml
+nodes:
+  - backend: npu
+    task: ['accuracy']
+    devices: [0]
+  - backend: cpu
+    task: ['accuracy']
+```
+
+- 执行以下命令进行精度比对：
+
+```shell
+atk task -c result/op_max/json/all_op_max.json -n node.yaml -e 1
+```
+
+> 执行结果如下：
+
+```shell
++-------+----------+------------+--------------+
+|  名称  | 总用例数  | 精度通过率   | 精度是否达标    |
++-------+----------+------------+--------------+
+| cpu_0 |    1     |   100.0    |     Pass     |
++-------+----------+------------+--------------+
+```
+
+> 更多使用参数说明可执行`atk task --help`或`atk node --help`查看
+> 执行前需要确保NPU相关驱动和CANN已安装，环境变量配置正常
+
+## 测试结果
+
+运行的测试结果及日志等文件默认均会保存在当前执行路径下，目录结构如下：
+
+```
+--atk_output
+  --all_op_max_时间戳
+    --log
+      atk.log  ---------------------------------------------任务日志
+    --report
+      all_op_max_reports_时间戳 -----------------------------任务报告
+    --input   ----------------------------------------------输入数据，默认不保存
+    --output  -----------------------------------------------输出数据，默认不保存
+```
